@@ -78,6 +78,9 @@ extern const gpio_input_pin_user_config_t sdhcCdPin[];
 /*! @brief Configuration structure 0 for output pins */
 extern const gpio_output_pin_user_config_t ledPins[];
 
+/*! @brief Configuration structure 0 for output pins */
+extern const gpio_output_pin_user_config_t gpioPins[];
+
 
 /*! @brief Pin names */
 enum _gpio_pins_pinNames{
@@ -87,6 +90,9 @@ enum _gpio_pins_pinNames{
   kGpioLED1     = GPIO_MAKE_PIN(GPIOE_IDX, 26U),
   kGpioLED2     = GPIO_MAKE_PIN(GPIOB_IDX, 22U),
   kGpioLED3     = GPIO_MAKE_PIN(GPIOB_IDX, 21U),
+  kGpioProbeMe  = GPIO_MAKE_PIN(GPIOC_IDX, 4U),
+  kSpi0cs  		= GPIO_MAKE_PIN(GPIOD_IDX, 0U),
+  kCan0stb 		= GPIO_MAKE_PIN(GPIOB_IDX, 9U),
 };  
 #endif
 

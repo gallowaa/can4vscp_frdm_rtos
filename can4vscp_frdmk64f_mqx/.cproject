@@ -74,6 +74,8 @@
 							<tool id="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.1347921429" name="Cross ARM C Compiler" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler">
 								<option id="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.include.paths.551522662" name="Include paths (-I)" superClass="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.include.paths" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="C:\Freescale\KSDK_1.2.0\rtos\mqx\config\mcu\MK64F12"/>
+									<listOptionValue builtIn="false" value="&quot;..\KSDK_Files&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\Users\Angus\Documents\GitHub\vscp_firmware\common&quot;"/>
 									<listOptionValue builtIn="false" value="C:\Freescale\KSDK_1.2.0\rtos\mqx\config\board\frdmk64f"/>
 									<listOptionValue builtIn="false" value="C:\Freescale\KSDK_1.2.0\rtos\mqx\config\common"/>
 									<listOptionValue builtIn="false" value="C:\Freescale\KSDK_1.2.0\rtos\mqx\mqx\source\include"/>

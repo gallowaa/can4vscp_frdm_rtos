@@ -59,7 +59,7 @@ gpio_input_pin_user_config_t switchPins[] = {
     .config.isPullEnable = true,
     .config.pullSelect = kPortPullUp,
     .config.isPassiveFilterEnabled = false,
-    .config.interrupt = kPortIntDisabled
+    .config.interrupt = kPortIntFallingEdge
   },
   {
     .pinName = kGpioSW3,
@@ -113,6 +113,33 @@ const gpio_output_pin_user_config_t ledPins[] = {
   {
     .pinName = GPIO_PINS_OUT_OF_RANGE,
   }
+};
+
+const gpio_output_pin_user_config_t gpioPins[] = {
+		{
+				.pinName = kGpioProbeMe,
+				.config.outputLogic = 1,
+				.config.slewRate = kPortSlowSlewRate,
+				.config.isOpenDrainEnabled = false,
+				.config.driveStrength = kPortLowDriveStrength,
+		},
+		{
+				.pinName = kSpi0cs,
+				.config.outputLogic = 1,
+				.config.slewRate = kPortSlowSlewRate,
+				.config.isOpenDrainEnabled = false,
+				.config.driveStrength = kPortLowDriveStrength,
+		},
+		{
+				.pinName = kCan0stb,
+				.config.outputLogic = 1,
+				.config.slewRate = kPortSlowSlewRate,
+				.config.isOpenDrainEnabled = false,
+				.config.driveStrength = kPortLowDriveStrength,
+		},
+		{
+				.pinName = GPIO_PINS_OUT_OF_RANGE,
+		}
 };
 
 /* END gpio_pins. */
