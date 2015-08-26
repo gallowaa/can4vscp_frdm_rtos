@@ -1,31 +1,21 @@
-/*
- * Copyright (c) 2015, Freescale Semiconductor, Inc.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * o Redistributions of source code must retain the above copyright notice, this list
- *   of conditions and the following disclaimer.
- *
- * o Redistributions in binary form must reproduce the above copyright notice, this
- *   list of conditions and the following disclaimer in the documentation and/or
- *   other materials provided with the distribution.
- *
- * o Neither the name of Freescale Semiconductor, Inc. nor the names of its
- *   contributors may be used to endorse or promote products derived from this
- *   software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
- * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
- * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+/*HEADER**********************************************************************
+*
+* Copyright 2008 Freescale Semiconductor, Inc.
+* Copyright 1989-2008 ARC International
+*
+* This software is owned or controlled by Freescale Semiconductor.
+* Use of this software is governed by the Freescale MQX RTOS License
+* distributed with this Material.
+* See the MQX_RTOS_LICENSE file distributed for more details.
+*
+* Brief License Summary:
+* This software is provided in source form for you to use free of charge,
+* but it is not open source software. You are allowed to use this software
+* but you cannot redistribute it or derivative works of it in source form.
+* The software may be used only in connection with a product containing
+* a Freescale microprocessor, microcontroller, or digital signal processor.
+* See license agreement file for full license terms including other
+* restrictions.
  *
  * main.h
  *
@@ -36,15 +26,30 @@
 #ifndef SOURCES_MAIN_H_
 #define SOURCES_MAIN_H_
 
+#ifndef BSP_CAN_DEVICE
+    //#error This application requires BSP_CAN_DEVICE defined non-zero in [board name].h. Please recompile BSP with this option.
+#else
+#endif
+
+#define CAN_DEVICE  BSP_CAN_DEVICE
+
+
+#define MY_EVENT_GROUP 123
+
 #define DEBUG				 // Reads eeprom after initializing it in init_app_eeprom();
 
 /** Standard C libs **/
+
+#include <stdbool.h>
+
+#ifdef MQX
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
-#include <stdbool.h>
+
 #include <math.h>
+#endif
 
 /** vscp_firmware **/
 #include <vscp_firmware.h>				/*! the official vscp firmware library */
@@ -52,6 +57,7 @@
 #include <vscp_type.h>					/*! defines vscp event types, as described by official spec */
 
 /* SDK includes */
+#ifdef MQX
 #include "pin_mux.h"					/*! configure pins with typical use cases */
 #include "board.h"						/*! miscellaneous board specific funcs & defs */
 #include "fsl_os_abstraction.h"			/*! accel/mag driver for "angle" event */
@@ -68,7 +74,10 @@
 #include "fsl_adc16_driver.h"			/*! adc driver for "temperature" event */
 #include "fsl_smc_hal.h"				/*! SMC = System Mode Controller */
 #include "fsl_pmc_hal.h"				/*! Used for getting reference voltage for adc */
+#endif
 
+#define DUMMY_DATA 0x55
+#define NOT_IMPLEMENTED 0
 
 /* VSCP application level */
 #define PAGES 1
@@ -165,15 +174,16 @@
 #define SUBZONE 						9
 
 
+/* TODO: These will change to use _lwgpio */
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
-//  	For main.c application
+//  	GPIO definitions
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /** VSCP Status LED **/
-#define STATUS_LED_EN 			LED1_EN
-#define STATUS_LED_ON 			LED1_ON
-#define STATUS_LED_OFF 			LED1_OFF
-#define STATUS_LED_TOGGLE 		LED1_TOGGLE
+//#define STATUS_LED_EN 			LED1_EN
+#define STATUS_LED_ON 			lwgpio_set_value(&led1, LWGPIO_VALUE_LOW); /* set pin to 0 */
+//#define STATUS_LED_OFF 			LED1_OFF
+#define STATUS_LED_TOGGLE 		lwgpio_toggle_value(&led1)
 
 
 #define INIT_BTN_EN 		(GPIO_DRV_InputPinInit(&switchPins[0]))					 /*!< init sw2 as input */
@@ -200,6 +210,7 @@
 #define CAN0_STB_EN  		(GPIO_DRV_OutputPinInit(&gpioPins[2]))  				  /*!< Enable STB pin, connected to PTB9*/
 #define CAN0_STB_HI	 		(GPIO_DRV_WritePinOutput(gpioPins[2].pinName, 1))         /*!< CAN PHY is in low power mode */
 #define CAN0_STB_LO 		(GPIO_DRV_WritePinOutput(gpioPins[2].pinName, 0))         /*!< CAN PHY is in normal mode */
+
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -234,14 +245,63 @@ void doDM( void );
 int8_t sendAccelEvent( void );
 
 
-
-
 typedef struct accelData {
     uint8_t xAngle;
     uint8_t yAngle;
 } accel_data_t;
 
+///////////////////////////////////////////////////////////////////////////////
+// 						 Global variables
+///////////////////////////////////////////////////////////////////////////////
 
+/* vscp globals */
+volatile uint32_t timeout_clock;        	// Clock used for timeouts
+volatile uint32_t measurement_clock; // Clock for measurements
+uint8_t sendTimer;  // Timer for CAN send
+uint8_t seconds;    // counter for seconds
+uint8_t minutes;    // counter for minutes
+uint8_t hours;      // Counter for hours
+
+/* vscp app globals */
+uint8_t current_temp;
+accel_data_t accelData;
+uint8_t temp0_low_alarm;
+uint8_t temp0_high_alarm;
+uint8_t accel0_high_alarm;
+
+/* other globals */
+
+uint8_t seconds_temp;        				// timer for temp event
+uint8_t seconds_accel;        				// timer for accel event
+uint32_t data_len_code;
+uint32_t bit_rate;
+uint32_t TX_identifier;
+uint32_t RX_identifier;
+uint32_t TX_remote_identifier;
+uint32_t RX_remote_identifier;
+uint32_t format;
+uint32_t interrupt;
+uint32_t TX_mailbox_num;
+uint32_t RX_mailbox_num;
+uint32_t TX_remote_mailbox_num;
+uint32_t RX_remote_mailbox_num;
+uint32_t bit_timing0;
+uint32_t bit_timing1;
+uint32_t frequency;
+uint32_t flexcan_mode;
+uint32_t flexcan_error_interrupt;
+
+
+/* Misc MQX Functions */
+extern void print_result(uint32_t);
+extern void get_string(char *,uint32_t *);
+extern void FLEXCAN_Init();
+extern uint32_t FLEXCAN_Tx_Init();
+extern uint32_t FLEXCAN_Rx_Init();
+
+extern void GPIO_init();
+
+void MY_FLEXCAN_ISR(void *);
 
 
 #endif /* SOURCES_MAIN_H_ */
