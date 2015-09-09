@@ -20,7 +20,8 @@ extern LWEVENT_STRUCT event; // Takes place of sync struct in KSDK
  *
  *END*-----------------------------------------------------------*/
 void Tx_Task(uint32_t parameter)
-{/* Body */
+{
+	/* Body */
 	unsigned char   data = 0;
 	uint32_t result;
 	unsigned char string[] =

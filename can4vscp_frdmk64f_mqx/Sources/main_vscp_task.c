@@ -79,18 +79,21 @@ volatile uint32_t ms_counter = 0;
 #define MAIN_TASK   1
 #define TX_TASK     2
 #define RX_TASK     3
+#define SPI_TASK	4
 
 /* Tasks */
 
 extern void Main_Task(uint32_t);
 extern void Tx_Task(uint32_t);
 extern void Rx_Task(uint32_t);
+extern void Spi_Task(uint32_t);
 
 /* Task template list */
 TASK_TEMPLATE_STRUCT MQX_template_list[] = {
 		{ MAIN_TASK, Main_Task, 1000L, 8L, "Main task", MQX_AUTO_START_TASK},
 		{ TX_TASK, Tx_Task, 1000L, 7L, "TX task", 0, 0, 0},
 		{ RX_TASK, Rx_Task, 1000L, 7L, "RX task", 0, 0, 0},
+		{ SPI_TASK, Spi_Task, 1000L, 6L, "Spi task", 0, 0, 0},
 		{ 0L, 0L, 0L, 0L, 0L, 0L }
 };
 
@@ -110,7 +113,7 @@ void MY_FLEXCAN_ISR
 	/* get the interrupt flag */
 	tmp_reg = (can_reg_ptr->IFLAG1 & CAN_IMASK1_BUFLM_MASK);
 	// check Tx/Rx interrupt flag and clear the interrupt
-	if(tmp_reg){
+	if(tmp_reg) {
 		/* clear the interrupt and unlock message buffer */
 		/* Start CR# 1751 */
 		_lwevent_set(&event, tmp_reg);
@@ -147,11 +150,12 @@ static void hwtimer1_callback(void *p)
 	measurement_clock++;
 	timeout_clock++;
 	sendTimer++;
+	ms_counter++;
 
 	vscp_statuscnt++;
 
 	if( (vscp_statuscnt > 100) && (vscp_initledfunc == VSCP_LED_BLINK1) ){
-		STATUS_LED_TOGGLE; // blink the vscp status led
+		//STATUS_LED_TOGGLE; // blink the vscp status led
 		vscp_statuscnt = 0;
 	}
 
@@ -231,6 +235,12 @@ void Main_Task(uint32_t parameter)
 		printf("\nTx task: task creation failed.");
 	}
 
+	created_task = _task_create(0, SPI_TASK, 0);
+	if (created_task == MQX_NULL_TASK_ID)
+	{
+		printf("\nSpi task: task creation failed.");
+	}
+
 	/* Start FLEXCAN */
 	result = FLEXCAN_Start(CAN_DEVICE);
 	printf("\nFLEXCAN started. result: 0x%lx", result);
@@ -255,13 +265,14 @@ void Main_Task(uint32_t parameter)
 	// Initialize vscp
 	vscp_init();
 
-	// Currently, this task never blocks, but it is at a higher priority than the Rx & Tx tasks, so it can be pre-empted.
+	// Currently, this task never blocks, but it is at a higher priority number than the Rx & Tx tasks, so it can be pre-empted.
 
 	while(1) {
 
 		// do a measurement if needed
-		if ( measurement_clock > 1000 ) {
-			measurement_clock = 0;
+		if ( ms_counter > 1000 ) {
+			ms_counter = 0;
+			STATUS_LED_TOGGLE;
 
 			// signal to tx_task, send a msg
 			_lwevent_set(&event, TX_mailbox_num);

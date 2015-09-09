@@ -63,7 +63,7 @@ void FLEXCAN_Init() {
 	printf("\nFLEXCAN mode selected. result: 0x%lx", result);
 
 	//result = FLEXCAN_Set_global_stdmask (CAN_DEVICE, 0x222);
-	result = FLEXCAN_Set_global_extmask(CAN_DEVICE, 0xFF00);
+	result = FLEXCAN_Set_global_extmask(CAN_DEVICE, 0x000);
 	printf("\nFLEXCAN global mask. result: 0x%lx", result);
 
 	/* Enable error interrupts */
