@@ -37,7 +37,7 @@ void GPIO_init() {
 	/* initialize lwgpio handle (led1) for BSP_LED1 pin
 	 * (defined in mqx/source/bsp/<bsp_name>/<bsp_name>.h file)
 	 */
-	if (!lwgpio_init(&led1, BSP_LED1, LWGPIO_DIR_OUTPUT, LWGPIO_VALUE_NOCHANGE))
+	if (!lwgpio_init(&led1, BSP_LED3, LWGPIO_DIR_OUTPUT, LWGPIO_VALUE_NOCHANGE))
 	{
 		printf("Initializing LED1 GPIO as output failed.\n");
 		_task_block();

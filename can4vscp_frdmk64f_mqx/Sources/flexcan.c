@@ -35,7 +35,9 @@ void FLEXCAN_Init() {
 	RX_mailbox_num = 0;
 	TX_mailbox_num = 1;
 
-	RX_identifier = 0x900;
+	// 1C:0A:1E:01 = thing:CLASS:TYPE:NICK
+	// RX_identifier = 0x001234;
+	RX_identifier = 0x1200;
 	TX_identifier = 0x321;
 
 	/* We use default settings */
@@ -63,7 +65,7 @@ void FLEXCAN_Init() {
 	printf("\nFLEXCAN mode selected. result: 0x%lx", result);
 
 	//result = FLEXCAN_Set_global_stdmask (CAN_DEVICE, 0x222);
-	result = FLEXCAN_Set_global_extmask(CAN_DEVICE, 0x000);
+	result = FLEXCAN_Set_global_extmask(CAN_DEVICE, 0xFF);
 	printf("\nFLEXCAN global mask. result: 0x%lx", result);
 
 	/* Enable error interrupts */

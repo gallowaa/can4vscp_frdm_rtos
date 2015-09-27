@@ -42,6 +42,7 @@
 //unsigned char send_buffer[SPI_MEMORY_PAGE_SIZE];
 //unsigned char recv_buffer[sizeof(TEST_STRING_LONG)];
 
+MQX_FILE_PTR           spifd;
 
 const char *device_mode[] =
 {
@@ -57,8 +58,9 @@ const char *clock_mode[] =
     "SPI_CLK_POL_PHA_MODE3"
 };
 
-extern uint8_t  readEEPROM (MQX_FILE_PTR spifd, uint8_t addr);
-extern void     writeEEPROM(MQX_FILE_PTR spifd, uint8_t addr, uint8_t data);
+extern uint8_t  readEEPROM (uint8_t addr);
+extern void     writeEEPROM(uint8_t addr, uint8_t data);
+extern void spi_eeprom_guid_init();
 
 /*TASK*-----------------------------------------------------------
  *
@@ -69,7 +71,7 @@ extern void     writeEEPROM(MQX_FILE_PTR spifd, uint8_t addr, uint8_t data);
  *END*-----------------------------------------------------------*/
 void Spi_Task(uint32_t parameter) {
 
-	 MQX_FILE_PTR           spifd;
+	//MQX_FILE_PTR           spifd;
 	uint32_t                param, result, i = 0;
 	SPI_STATISTICS_STRUCT  stats;
 	SPI_READ_WRITE_STRUCT  rw;
@@ -179,10 +181,12 @@ void Spi_Task(uint32_t parameter) {
 
 	while(1) {
 
+		eeprom_guid_init();
+
 		for( addr=0x00; addr<0xFF; addr++)
 		{
-			writeEEPROM( spifd, addr, addr);
-			rvByte = readEEPROM(spifd, addr);
+			writeEEPROM( addr, addr);
+			rvByte = readEEPROM( addr);
 
 			printf("(%02X) = %02X\r\n", addr, rvByte);
 		}
@@ -191,3 +195,112 @@ void Spi_Task(uint32_t parameter) {
 
 }
 
+void SPI_init( void ) {
+
+	uint32_t               param, result, i = 0;
+	SPI_STATISTICS_STRUCT  stats;
+	SPI_READ_WRITE_STRUCT  rw;
+	uint8_t addr;
+	uint8_t rvByte;
+
+	/* Open the SPI driver */
+	spifd = fopen (TEST_CHANNEL, NULL);
+
+	if (NULL == spifd)
+	{
+		printf ("Error opening SPI driver!\n");
+		_time_delay (200L);
+		_task_block ();
+	}
+
+   /* Display baud rate */
+	printf ("Current baud rate ... ");
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_GET_BAUD, &param))
+	{
+		printf ("%d Hz\n", param);
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Set a different rate */
+	param = 1000000;
+	printf ("Changing the baud rate to %d Hz ... ", param);
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_SET_BAUD, &param))
+	{
+		printf ("OK\n");
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+	/* Set clock mode */
+	param = SPI_CLK_POL_PHA_MODE0;
+	printf ("Setting clock mode to %s ... ", clock_mode[param]);
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_SET_MODE, &param))
+	{
+		printf ("OK\n");
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Get clock mode */
+	printf ("Getting clock mode ... ");
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_GET_MODE, &param))
+	{
+		printf ("%s\n", clock_mode[param]);
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Set big endian */
+	param = SPI_DEVICE_BIG_ENDIAN;
+	printf ("Setting endian to %s ... ", param == SPI_DEVICE_BIG_ENDIAN ? "SPI_DEVICE_BIG_ENDIAN" : "SPI_DEVICE_LITTLE_ENDIAN");
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_SET_ENDIAN, &param))
+	{
+		printf ("OK\n");
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Get endian */
+	printf ("Getting endian ... ");
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_GET_ENDIAN, &param))
+	{
+		printf ("%s\n", param == SPI_DEVICE_BIG_ENDIAN ? "SPI_DEVICE_BIG_ENDIAN" : "SPI_DEVICE_LITTLE_ENDIAN");
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Set transfer mode */
+	param = SPI_DEVICE_MASTER_MODE;
+	printf ("Setting transfer mode to %s ... ", device_mode[param]);
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_SET_TRANSFER_MODE, &param))
+	{
+		printf ("OK\n");
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+
+	/* Get transfer mode */
+	printf ("Getting transfer mode ... ");
+	if (SPI_OK == ioctl (spifd, IO_IOCTL_SPI_GET_TRANSFER_MODE, &param))
+	{
+		printf ("%s\n", device_mode[param]);
+	}
+	else
+	{
+		printf ("ERROR\n");
+	}
+}

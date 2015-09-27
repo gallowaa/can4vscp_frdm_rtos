@@ -47,6 +47,7 @@
 
 #include "main.h"
 
+
 #ifndef PSP_MQX_CPU_IS_KINETIS
 #include <flexcan.h>
 #endif
@@ -80,6 +81,7 @@ volatile uint32_t ms_counter = 0;
 #define TX_TASK     2
 #define RX_TASK     3
 #define SPI_TASK	4
+#define ACCEL_TASK	5
 
 /* Tasks */
 
@@ -87,15 +89,233 @@ extern void Main_Task(uint32_t);
 extern void Tx_Task(uint32_t);
 extern void Rx_Task(uint32_t);
 extern void Spi_Task(uint32_t);
+extern void Accel_Task(uint32_t);
+
+extern void SPI_init( void );
+extern void eeprom_guid_init( void );
+extern void writeEEPROM( uint8_t addr, unsigned char data);
+extern uint8_t readEEPROM( uint8_t addr);
+
+static void vscp_timer_init();
+static void hwtimer1_callback(void *p);
 
 /* Task template list */
 TASK_TEMPLATE_STRUCT MQX_template_list[] = {
-		{ MAIN_TASK, Main_Task, 1000L, 8L, "Main task", MQX_AUTO_START_TASK},
-		{ TX_TASK, Tx_Task, 1000L, 7L, "TX task", 0, 0, 0},
-		{ RX_TASK, Rx_Task, 1000L, 7L, "RX task", 0, 0, 0},
-		{ SPI_TASK, Spi_Task, 1000L, 6L, "Spi task", 0, 0, 0},
+		{ MAIN_TASK, Main_Task, 1000L, 9L, "Main task", MQX_AUTO_START_TASK},
+		//{ TX_TASK, Tx_Task, 1000L, 7L, "TX task", 0, 0, 0},
+		{ RX_TASK, Rx_Task, 2000L, 7L, "RX task", 0, 0, 0},
+		//{ SPI_TASK, Spi_Task, 1000L, 6L, "Spi task", 0, 0, 0},
+		{ ACCEL_TASK, Accel_Task, 1000L, 8L, "Accel task", 0, 0, 0},
 		{ 0L, 0L, 0L, 0L, 0L, 0L }
 };
+
+#define VSCP_DONE
+/*TASK*-----------------------------------------------------------
+ *
+ * Task Name : Main_Task
+ * Comments :
+ *
+ *
+ *END*-----------------------------------------------------------*/
+void Main_Task(uint32_t parameter)
+{
+	uint32_t result;
+	_task_id     created_task;
+	uint8_t addr;
+	uint8_t rvByte;
+
+	/*
+	 * Display all exceptions to terminal
+	 */
+	_int_install_unexpected_isr();
+
+	//////////////////////////////////
+
+	GPIO_init();
+	vscp_timer_init();
+	FLEXCAN_Init();
+	SPI_init();
+
+	///////////////////////////////////
+
+	/* Set up an event group */
+	result = _lwevent_create(&event, LWEVENT_AUTO_CLEAR);
+	if (result != MQX_OK) {
+		printf("\nCannot create lwevent");
+	}
+
+	created_task = _task_create(0, RX_TASK, 0);
+	if (created_task == MQX_NULL_TASK_ID)
+	{
+		printf("\nRx task: task creation failed.");
+	}
+
+	/* TX is done directly from main task using MQX flexcan drivers */
+
+	/*
+	created_task = _task_create(0, TX_TASK, 0);
+	if (created_task == MQX_NULL_TASK_ID)
+	{
+		printf("\nTx task: task creation failed.");
+	}*/
+
+	created_task = _task_create(0, ACCEL_TASK, 0);
+	if (created_task == MQX_NULL_TASK_ID)
+	{
+		printf("\nSpi task: task creation failed.");
+	}
+
+	/* Start FLEXCAN */
+	result = FLEXCAN_Start(CAN_DEVICE);
+	printf("\nFLEXCAN started. result: 0x%lx \r\n", result);
+
+	// Check VSCP persistent storage and
+	// restore if needed
+
+#ifdef VSCP_DONE
+	if( !vscp_check_pstorage() ) {
+
+#ifdef EEPROM_TEST
+		for( addr=0x00; addr<0xFF; addr++)
+		{
+			writeEEPROM( addr, addr);
+			rvByte = readEEPROM( addr);
+			printf("(%02X) = %02X\r\n", addr, rvByte);
+		}
+
+		for( addr=0x00; addr<0xFF; addr++)
+		{
+			//writeEEPROM( addr, addr);
+			rvByte = readEEPROM( addr);
+			printf("(%02X) = %02X\r\n", addr, rvByte);
+		}
+#endif
+
+		eeprom_guid_init();
+
+		// Spoiled or not initialized - reinitialize
+		init_app_eeprom();
+		init_app_ram();     // Needed because some ram positions
+		// are initialized from EEPROM
+	}
+#endif
+
+	// Initialize vscp
+	vscp_init();
+
+	// Currently, this task never blocks, but it is at a higher priority number than the Rx & Tx tasks, so it can be pre-empted.
+
+	while(1) {
+
+#ifdef LOOP_TEST
+
+		// do a measurement if needed
+		if ( ms_counter > 1000 ) {
+			ms_counter = 0;
+			STATUS_LED_TOGGLE;
+
+			// signal to tx_task, send a msg
+			_lwevent_set(&event, 1 << TX_mailbox_num);
+		}
+	}
+#else
+		/* getEvent is taken care of by rx_task */
+		vscp_imsg.flags = 0;
+		// vscp_getEvent(); 		// fetch one vscp event -> vscp_imsg struct
+
+		switch ( vscp_node_state ) {
+
+		case VSCP_STATE_STARTUP: // Cold/warm reset
+
+			// Get nickname from EEPROM
+			if (VSCP_ADDRESS_FREE == vscp_nickname) {
+				// new on segment need a nickname
+				vscp_node_state = VSCP_STATE_INIT;
+			} else {
+				// been here before - go on
+				vscp_node_state = VSCP_STATE_ACTIVE;
+				vscp_goActiveState();
+			}
+			break;
+
+		case VSCP_STATE_INIT: // Assigning nickname
+			vscp_handleProbeState();
+			break;
+
+		case VSCP_STATE_PREACTIVE:  // Waiting for host initialisation
+			vscp_goActiveState();
+			break;
+
+		case VSCP_STATE_ACTIVE:     // The normal state
+
+			// Check for incoming event?
+			if (vscp_imsg.flags & VSCP_VALID_MSG) {
+
+				if ( VSCP_CLASS1_PROTOCOL == vscp_imsg.vscp_class  ) {
+
+					// Handle protocol event
+					vscp_handleProtocolEvent();
+				}
+				// doDM();
+			}
+			break;
+
+		case VSCP_STATE_ERROR: // Everything is *very* *very* bad.
+			vscp_error();
+			break;
+
+		default: // Should not be here...
+			vscp_node_state = VSCP_STATE_STARTUP;
+			break;
+
+		}
+
+		// do a measurement if needed
+		if ( measurement_clock > 1000 ) {
+
+			//PRINTF("Transmit send errors: %d\r", numErrors);
+
+			measurement_clock = 0;
+
+			// Do VSCP one second jobs
+			vscp_doOneSecondWork();
+			seconds++;
+			// sendTimer++; // sendTimer should be incremented in the 1ms interrupt
+
+
+			// Temperature report timers are only updated if in active
+			// state guid_reset
+			if ( VSCP_STATE_ACTIVE == vscp_node_state ) {
+
+				// Do VSCP one second jobs
+
+				/* temperature is done here, it will check seconds_temp variable
+				 * so that it sends the event as per the REPORT_INTERVAL specified */
+				doApplicationOneSecondWork();
+				seconds_temp++; // Temperature report timers are only updated if in active state
+				seconds_accel++;
+
+			}
+			doWork();
+		}
+
+		// Timekeeping - Can replace this with RTC which defines structs for keeping track of this automatically
+		if ( seconds > 59 ) {
+
+			seconds = 0;
+			minutes++;
+
+			if ( minutes > 59 ) {
+				minutes = 0;
+				hours++;
+			}
+			if ( hours > 23 )
+				hours = 0;
+		}
+	}
+#endif
+	//vscp_handleProbeState(); // just a test
+}
 
 #if PSP_MQX_CPU_IS_KINETIS
 void MY_FLEXCAN_ISR
@@ -190,199 +410,3 @@ static void vscp_timer_init() {
 	printf("Start hwtimer1\n");
 	hwtimer_start(&hwtimer1);
 }
-
-/*TASK*-----------------------------------------------------------
- *
- * Task Name : Main_Task
- * Comments :
- *
- *
- *END*-----------------------------------------------------------*/
-void Main_Task(uint32_t parameter)
-{
-	uint32_t result;
-	_task_id     created_task;
-
-	/*
-	 * Display all exceptions to terminal
-	 */
-	_int_install_unexpected_isr();
-
-	//////////////////////////////////
-
-	GPIO_init();
-	vscp_timer_init();
-	FLEXCAN_Init();
-
-	///////////////////////////////////
-
-	/* Set up an event group */
-	result = _lwevent_create(&event, LWEVENT_AUTO_CLEAR);
-	if (result != MQX_OK) {
-		printf("\nCannot create lwevent");
-	}
-
-	created_task = _task_create(0, RX_TASK, 0);
-	if (created_task == MQX_NULL_TASK_ID)
-	{
-		printf("\nRx task: task creation failed.");
-	}
-
-
-	created_task = _task_create(0, TX_TASK, 0);
-	if (created_task == MQX_NULL_TASK_ID)
-	{
-		printf("\nTx task: task creation failed.");
-	}
-
-	created_task = _task_create(0, SPI_TASK, 0);
-	if (created_task == MQX_NULL_TASK_ID)
-	{
-		printf("\nSpi task: task creation failed.");
-	}
-
-	/* Start FLEXCAN */
-	result = FLEXCAN_Start(CAN_DEVICE);
-	printf("\nFLEXCAN started. result: 0x%lx", result);
-
-	//can take this out once vscp fully implemented
-	vscp_initledfunc = VSCP_LED_BLINK1; //0x02
-
-	// Check VSCP persistent storage and
-	// restore if needed
-
-	if( !vscp_check_pstorage() ) {
-
-		//TODO: spi driver
-		// spi_eeprom_guid_init();
-
-		// Spoiled or not initialized - reinitialize
-		// init_app_eeprom();
-		init_app_ram();     // Needed because some ram positions
-		// are initialized from EEPROM
-	}
-
-	// Initialize vscp
-	vscp_init();
-
-	// Currently, this task never blocks, but it is at a higher priority number than the Rx & Tx tasks, so it can be pre-empted.
-
-	while(1) {
-
-		// do a measurement if needed
-		if ( ms_counter > 1000 ) {
-			ms_counter = 0;
-			STATUS_LED_TOGGLE;
-
-			// signal to tx_task, send a msg
-			_lwevent_set(&event, TX_mailbox_num);
-		}
-
-#ifdef VSCP
-
-		/* getEvent is taken care of by rx_task */
-		// vscp_imsg.flags = 0;
-		// vscp_getEvent(); 		// fetch one vscp event -> vscp_imsg struct
-
-		switch ( vscp_node_state ) {
-
-		case VSCP_STATE_STARTUP: // Cold/warm reset
-
-			// Get nickname from EEPROM
-			if (VSCP_ADDRESS_FREE == vscp_nickname) {
-				// new on segment need a nickname
-				vscp_node_state = VSCP_STATE_INIT;
-			} else {
-				// been here before - go on
-				vscp_node_state = VSCP_STATE_ACTIVE;
-				vscp_goActiveState();
-			}
-			break;
-
-		case VSCP_STATE_INIT: // Assigning nickname
-			vscp_handleProbeState();
-			break;
-
-		case VSCP_STATE_PREACTIVE:  // Waiting for host initialisation
-			vscp_goActiveState();
-			break;
-
-		case VSCP_STATE_ACTIVE:     // The normal state
-
-			// Check for incoming event?
-			if (vscp_imsg.flags & VSCP_VALID_MSG) {
-
-				if ( VSCP_CLASS1_PROTOCOL == vscp_imsg.vscp_class  ) {
-
-					// Handle protocol event
-					vscp_handleProtocolEvent();
-
-				}
-				// doDM();
-			}
-			break;
-
-		case VSCP_STATE_ERROR: // Everything is *very* *very* bad.
-			vscp_error();
-			break;
-
-		default: // Should not be here...
-			vscp_node_state = VSCP_STATE_STARTUP;
-			break;
-
-		}
-
-		// do a measurement if needed
-		if ( measurement_clock > 1000 ) {
-
-			//PRINTF("Transmit send errors: %d\r", numErrors);
-
-			measurement_clock = 0;
-
-			// Do VSCP one second jobs
-			vscp_doOneSecondWork();
-			seconds++;
-			// sendTimer++; // sendTimer should be incremented in the 1ms interrupt
-
-
-			// Temperature report timers are only updated if in active
-			// state guid_reset
-			if ( VSCP_STATE_ACTIVE == vscp_node_state ) {
-
-				// Do VSCP one second jobs
-
-				/* temperature is done here, it will check seconds_temp variable
-				 * so that it sends the event as per the REPORT_INTERVAL specified */
-				//doApplicationOneSecondWork();
-				seconds_temp++; // Temperature report timers are only updated if in active state
-				seconds_accel++;
-
-			}
-			doWork();
-		}
-
-		// Timekeeping - Can replace this with RTC which defines structs for keeping track of this automatically
-		if ( seconds > 59 ) {
-
-			seconds = 0;
-			minutes++;
-
-			if ( minutes > 59 ) {
-				minutes = 0;
-				hours++;
-			}
-
-			if ( hours > 23 ) hours = 0;
-
-		}
-
-#endif
-
-	}
-
-	//vscp_handleProbeState(); // just a test
-}
-
-
-
-

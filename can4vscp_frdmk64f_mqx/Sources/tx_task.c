@@ -50,23 +50,21 @@ void Tx_Task(uint32_t parameter)
 			printf("Event Wait failed \r\n");
 		}
 
-
 		/* (id, dlc, pdata, FLEXCAN_TX_XTD_FRAME) */
 
 		result = FLEXCAN_Tx_message(CAN_DEVICE, TX_mailbox_num, TX_identifier, format, data_len_code, &data);
-			if(result != FLEXCAN_OK)
-				printf("\nTransmit error. Error Code: 0x%lx", result);
-			else
-				printf("\nData transmit: %d", data);
+		if(result != FLEXCAN_OK)
+			printf("\nTransmit error. Error Code: 0x%lx", result);
+		else
+			printf("Data transmit: %d \r\n", data);
 
-			/*
+		/*
 		result = FLEXCAN_Tx_mailbox(CAN_DEVICE, TX_mailbox_num, &data);
 
 		if(result != FLEXCAN_OK)
 			printf("\nTransmit error. Error Code: 0x%lx", result);
 		else
 			printf("\nData transmit: %d", data);*/
-
 
 		/*
       string[7] = data;

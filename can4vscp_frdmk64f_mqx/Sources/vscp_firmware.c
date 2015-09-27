@@ -168,6 +168,10 @@ int8_t vscp_check_pstorage(void)
 {
     // control byte == 01xxxxxx means initialized
     // everything else is uninitialized
+
+	// 0xc0 = 0b1100_0000
+	// 0x40 = 0b0100_0000
+
     if ((vscp_getSegmentCRC() & 0xc0) == 0x40) {
         return TRUE;
     }

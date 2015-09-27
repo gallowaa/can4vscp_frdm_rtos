@@ -24,6 +24,7 @@
 
 #define CAN_SUCCESS 0
 
+extern MQX_FILE_PTR           spifd; // SPI0 file descriptor
 // extern fxos_handler_t i2cDevice;
 //uint8_t buffer[BUFFER_SIZE_BYTE]; /*! Not used */
 
@@ -64,6 +65,11 @@ void updateTemp(void);
 
 int8_t sendCANFrame(uint32_t id, uint8_t dlc, uint8_t *pdata);
 int8_t getCANFrame(uint32_t *pid, uint8_t *pdlc, uint8_t *pdata);
+
+extern void writeEEPROM( uint8_t addr, unsigned char data);
+extern uint8_t readEEPROM( uint8_t addr);
+
+
 
 
 
@@ -141,13 +147,14 @@ int8_t sendCANFrame(uint32_t id, uint8_t dlc, uint8_t *pdata)
 
 	while ( sendTimer < 1000 ) {
 
-		/*if( CAN_SUCCESS == FLEXCANSendMessage(id, dlc, pdata, FLEXCAN_TX_XTD_FRAME) ) {
-			rv = TRUE;
-			break;
-		}*/
+		/*if( CAN_SUCCESS == FLEXCANSendMessage(id, dlc, pdata, FLEXCAN_TX_XTD_FRAME) ) { */
 
 		if( FLEXCAN_OK == FLEXCAN_Tx_message(CAN_DEVICE, TX_mailbox_num, id, format, (uint32_t) dlc, pdata) );
-		if( FLEXCAN_OK == FLEXCAN_Tx_mailbox(CAN_DEVICE, TX_mailbox_num, pdata) );
+
+		if( FLEXCAN_OK == FLEXCAN_Tx_mailbox(CAN_DEVICE, TX_mailbox_num, pdata) ){
+			rv = TRUE;
+			break;
+		}
 	}
 
 	vscp_omsg.flags = 0;
@@ -183,34 +190,34 @@ int8_t getCANFrame(uint32_t *pid, uint8_t *pdlc, uint8_t *pdata)
 
 	if ( FLEXCAN_OK == FLEXCAN_Rx_message(CAN_DEVICE, RX_mailbox_num, pid, FLEXCAN_EXTENDED, &pdlc_32, pdata, FLEXCAN_ENABLE) ){
 
-		//pdata = tempdata;
-
 #ifdef DO_PRINT
 
 		printf("ID: 0x%lx, DLC=%lu \r\n",*pid, pdlc_32);
 		printf("RX MB data: 0x");
 
-		for (i = 0; i < pdlc_32; i++)
-		{
+		for (i = 0; i < pdlc_32; i++) {
 			printf("%02x ", pdata[i]);
-			//pdata[i] = pdata_32[i];
 		}
+		printf("\r\n");
 
 #endif
 		// convert to 8-bit, pdlc_32 is really only 4-bits so this is safe.
 		*pdlc = (uint8_t) pdlc_32;
 
-
 		result = TRUE;
 	}
-	else
+	else {
 		result = FALSE;
+	}
 
+	FLEXCAN_Unlock_mailbox (CAN_DEVICE);
+
+	/*
 	result = FLEXCAN_Unlock_mailbox (CAN_DEVICE);
 	if(result != FLEXCAN_OK)
 	{
 		printf("\nUnlock mailbox failed. Error Code: 0x%lx", result);
-	}
+	}*/
 
 	return result;
 }
@@ -251,7 +258,8 @@ uint8_t vscp_getSubMinorVersion( void )
  */
 uint8_t vscp_getGUID(uint8_t idx)
 {
-	return NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_REG_GUID + idx);
+	//return NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_REG_GUID + idx);
+	return readEEPROM(VSCP_EEPROM_REG_GUID + idx);
 }
 
 // Only if write to protected
@@ -275,7 +283,8 @@ uint8_t vscp_getUserID(uint8_t idx)
 #ifdef VSCP_REG_IN_FLASH
 	return readFLASH( VSCP_EEPROM_REG_USERID + idx);
 #else
-	return NOT_IMPLEMENTED; //spi_eeprom_read( VSCP_EEPROM_REG_USERID + idx);
+	//return NOT_IMPLEMENTED; //spi_eeprom_read( VSCP_EEPROM_REG_USERID + idx);
+	return readEEPROM(VSCP_EEPROM_REG_USERID + idx);
 #endif
 
 }
@@ -286,6 +295,8 @@ void vscp_setUserID(uint8_t idx, uint8_t data)
 	writeFLASH(VSCP_FLASH_BASE, buffer);
 #else
 	////spi_eeprom_write(VSCP_EEPROM_REG_USERID,data);
+	writeEEPROM(VSCP_EEPROM_REG_USERID, data);
+
 #endif
 }
 
@@ -307,7 +318,8 @@ uint8_t vscp_getManufacturerId(uint8_t idx)
 #ifdef VSCP_REG_IN_FLASH
 	return readFLASH( VSCP_EEPROM_REG_MANUFACTUR_ID0 + idx);
 #else
-	return NOT_IMPLEMENTED; ////spi_eeprom_read( VSCP_EEPROM_REG_MANUFACTUR_ID0 + idx );
+	//return NOT_IMPLEMENTED; ////spi_eeprom_read( VSCP_EEPROM_REG_MANUFACTUR_ID0 + idx );
+	return readEEPROM( VSCP_EEPROM_REG_MANUFACTUR_ID0 + idx );
 #endif
 
 }
@@ -344,7 +356,7 @@ uint8_t vscp_getRegisterPagesUsed( void )
  */
 uint8_t vscp_getMDF_URL(uint8_t idx)
 {
-	return NOT_IMPLEMENTED; // vscp_deviceURL[ idx ];
+	return vscp_deviceURL[ idx ];
 }
 
 /*!
@@ -356,7 +368,7 @@ uint8_t vscp_readNicknamePermanent(void)
 #ifdef VSCP_REG_IN_FLASH
 	return readFLASH( VSCP_EEPROM_NICKNAME );
 #else
-	return NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_NICKNAME );
+	return readEEPROM( VSCP_EEPROM_NICKNAME );
 #endif
 }
 
@@ -371,7 +383,7 @@ void vscp_writeNicknamePermanent(uint8_t nickname)
 	buffer[VSCP_EEPROM_NICKNAME * 4] = nickname;
 	writeFLASH(VSCP_FLASH_BASE, buffer);
 #else
-	////spi_eeprom_write(VSCP_EEPROM_NICKNAME, nickname);
+	writeEEPROM(VSCP_EEPROM_NICKNAME, nickname);	////spi_eeprom_write(VSCP_EEPROM_NICKNAME, nickname);
 #endif
 
 }
@@ -385,7 +397,7 @@ uint8_t vscp_getSegmentCRC(void)
 #ifdef VSCP_REG_IN_FLASH
 	return readFLASH( VSCP_EEPROM_SEGMENT_CRC );
 #else
-	return NOT_IMPLEMENTED; //spi_eeprom_read( VSCP_EEPROM_SEGMENT_CRC );
+	return readEEPROM( VSCP_EEPROM_SEGMENT_CRC );
 #endif
 }
 
@@ -399,7 +411,7 @@ void vscp_setSegmentCRC(uint8_t crc)
 	buffer[VSCP_EEPROM_SEGMENT_CRC * 4] = crc;
 	writeFLASH(VSCP_FLASH_BASE, buffer);
 #else
-	////spi_eeprom_write(VSCP_EEPROM_SEGMENT_CRC, crc);
+	writeEEPROM(VSCP_EEPROM_SEGMENT_CRC, crc);
 #endif
 }
 
@@ -412,7 +424,7 @@ uint8_t vscp_getControlByte(void)
 #ifdef VSCP_REG_IN_FLASH
 	return readFLASH(VSCP_EEPROM_CONTROL);
 #else
-	return NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_CONTROL);
+	return readEEPROM(VSCP_EEPROM_CONTROL);
 #endif
 }
 
@@ -426,7 +438,7 @@ void vscp_setControlByte(uint8_t ctrl)
 	buffer[VSCP_EEPROM_CONTROL * 4] = ctrl;
 	writeFLASH(VSCP_FLASH_BASE, buffer);
 #else
-	////spi_eeprom_write(VSCP_EEPROM_CONTROL,ctrl);
+	writeEEPROM(VSCP_EEPROM_CONTROL,ctrl);
 #endif
 }
 
@@ -445,17 +457,20 @@ void doWork(void)
 	uint8_t setpoint;
 	uint8_t control_reg;
 
-	//updateAccel();
-	//updateTemp();
-
+	// updateAccel(); // accel_task replaces this
+#ifdef HAS_TEMP_SENSOR
+	updateTemp();
+#endif
 
 	// Check if alarm events should be sent
 	if (VSCP_STATE_ACTIVE == vscp_node_state) {
 
+#ifdef HAS_TEMP_SENSOR
+
 		/* FIRST CHECK TEMP LOW ALARM */
 
-		control_reg = NOT_IMPLEMENTED; //spi_eeprom_read(REG_TEMP0_CONTROL); // one CONTROL read services high and low checks
-		setpoint = NOT_IMPLEMENTED; //spi_eeprom_read(REG_TEMP0_LOW_ALARM); // one read for low alarm
+		control_reg = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_CONTROL); // one CONTROL read services high and low checks
+		setpoint = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_LOW_ALARM); // one read for low alarm
 
 		// First check low alarm condition
 		if (temp_low_alarm & 1 << i) {
@@ -482,7 +497,7 @@ void doWork(void)
 				// to send an alarm event.
 				vscp_alarmstatus |= MODULE_LOW_ALARM;
 
-				// control_reg = //spi_eeprom_read(REG_TEMP0_CONTROL);
+				control_reg = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
 
 				// Should ALARM (TURNON/TURNOFF) events be sent
 				if (control_reg & CONFIG_ENABLE_LOW_ALARM) {
@@ -506,8 +521,8 @@ void doWork(void)
 					}
 
 					vscp_omsg.data[ 0 ] = 1; // 1 for temp sensor
-					vscp_omsg.data[ 1 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_ZONE); // Zone
-					vscp_omsg.data[ 2 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_SUBZONE); // Subzone
+					vscp_omsg.data[ 1 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE); // Zone
+					vscp_omsg.data[ 2 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE); // Subzone
 
 					// Send event
 					if (!vscp_sendEvent()) {
@@ -522,14 +537,13 @@ void doWork(void)
 
 		/* CHECK TEMP HIGH ALARM */
 
-		setpoint = NOT_IMPLEMENTED; //spi_eeprom_read(REG_TEMP0_HIGH_ALARM); // Can do one read for high alarm
+		setpoint = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM); // Can do one read for high alarm
 
 		// We have an alarm condition already
 		if (temp_high_alarm & (1 << i)) {
 
 			// Check if it is no longer valid
 			if (current_temp < setpoint) {
-
 				temp_high_alarm &= ~(1 << i); // Reset alarm condition
 			}
 		}
@@ -539,7 +553,7 @@ void doWork(void)
 			// check if we should have
 			if (current_temp > setpoint) {
 
-				//setpoint = //spi_eeprom_read(REG_TEMP0_HIGH_ALARM); // Can do one read for high alarm
+				setpoint = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM); // Can do one read for high alarm
 
 				// We have a low alarm condition
 				temp_high_alarm |= (1 << i);
@@ -549,7 +563,7 @@ void doWork(void)
 				// to send an alarm event.
 				vscp_alarmstatus |= MODULE_HIGH_ALARM;
 
-				// control_reg = //spi_eeprom_read(REG_TEMP0_CONTROL);
+				control_reg = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
 
 				// Should ALARM (TURNON/TURNOFF) events be sent
 				if (control_reg & CONFIG_ENABLE_HIGH_ALARM) {
@@ -573,8 +587,8 @@ void doWork(void)
 					}
 
 					vscp_omsg.data[ 0 ] = 1; // 1 for temp sensor
-					vscp_omsg.data[ 1 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_ZONE); // Zone
-					vscp_omsg.data[ 2 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_SUBZONE); // Subzone
+					vscp_omsg.data[ 1 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE);  // Zone
+					vscp_omsg.data[ 2 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE); // Subzone
 
 					// Send event
 					if (!vscp_sendEvent()) {
@@ -585,12 +599,13 @@ void doWork(void)
 				}
 			}
 		}
+#endif
 
 		/* CHECK ACCEL HIGH X ALARM */
-		control_reg = NOT_IMPLEMENTED;//spi_eeprom_read(REG_ACCEL0_CONTROL);
-		setpoint = NOT_IMPLEMENTED;//spi_eeprom_read(REG_ACCEL0_HIGH_ALARM);
+		control_reg = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
+		setpoint = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM); // 15 Deg
 
-		// First check low alarm condition
+		// First check HIGH alarm condition
 		if (accel_high_alarm & (1 << i)) {
 
 			// Check if it is no longer valid
@@ -607,15 +622,14 @@ void doWork(void)
 			// check if we should have
 			if (accelData.xAngle > setpoint) {
 
-				// We have a low alarm condition
+				// We have a high alarm condition
 				accel_high_alarm |= (1 << i);
 
 				// Set module alarm flag
-				// Note that this bit is set even if we are uanble
-				// to send an alarm event.
+				// Note that this bit is set even if we are un-able to send an alarm event.
 				vscp_alarmstatus |= MODULE_HIGH_ALARM;
 
-				//control_reg = //spi_eeprom_read(REG_ACCEL0_CONTROL);
+				control_reg = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
 
 				// Should ALARM (TURNON/TURNOFF) events be sent
 				if (control_reg & CONFIG_ENABLE_LOW_ALARM) {
@@ -639,8 +653,8 @@ void doWork(void)
 					}
 
 					vscp_omsg.data[ 0 ] = 2; // 2 for accelerometer
-					vscp_omsg.data[ 1 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_ZONE); // Zone
-					vscp_omsg.data[ 2 ] = DUMMY_DATA;//spi_eeprom_read(REG_FRDM_SUBZONE); // Subzone
+					vscp_omsg.data[ 1 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE); // Zone
+					vscp_omsg.data[ 2 ] = readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE); // Subzone
 
 					// Send event
 					if (!vscp_sendEvent()) {
@@ -654,22 +668,22 @@ void doWork(void)
 		}
 	} /*! VSCP-ACTIVE-STATE*/
 }
-
+#define USE_EEPROM
 void doApplicationOneSecondWork(void)
 {
 	uint8_t tmp;
 
 	uint8_t i = 0;
 
-
 	// Check if events should be sent
 	if ( VSCP_STATE_ACTIVE == vscp_node_state ) {
 
+#ifdef HAS_TEMP_SENSOR
 		// Time for temperature report ?
 #ifdef USE_EEPROM
-		tmp = //spi_eeprom_read(REG_TEMP0_REPORT_INTERVAL + i);
+		tmp = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL + i);
 #else
-				tmp = 2;
+		tmp = 2;
 #endif
 		if (tmp && (seconds_temp > tmp)) {
 
@@ -678,17 +692,23 @@ void doApplicationOneSecondWork(void)
 				seconds_temp = 0;
 			}
 		}
+#endif
 
 		// Time for accel report ?
 #ifdef USE_EEPROM
-		tmp = //spi_eeprom_read(REG_ACCEL0_REPORT_INTERVAL);
+
+		tmp = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
+
 #else
-				tmp = 2;
+		tmp = 2;
 #endif
 		if(tmp && (seconds_accel > tmp)) {
 
-			if(sendAccelEvent()) {
-				seconds_accel = 0;
+			for( i = 0; i < ACCEL_SENSORS; i++ ){
+				if( sendAccelEvent(i) ) {
+					_time_delay(5);
+					seconds_accel = 0;
+				}
 			}
 		}
 	}
@@ -699,7 +719,7 @@ void updateAccel( void ) {
 
 	accelData = getAngle(i2cDevice);
 #ifdef DO_PRINT
-	PRINTF("X = %d, Y = %d \r\n", accelData.xAngle, accelData.yAngle);
+	printf("X = %d, Y = %d \r\n", accelData.xAngle, accelData.yAngle);
 #endif
 
 	//current_xAngle = accelData.xAngle; // current_xAngle allows us to also read the current accel event
@@ -709,15 +729,29 @@ void updateAccel( void ) {
 
 
 /* todo: this needs to be updated to display the correct radian value, or use different measurement TYPE */
-int8_t sendAccelEvent( void )
+int8_t sendAccelEvent( uint8_t i )
 {
-	vscp_omsg.flags = VSCP_VALID_MSG + 3; // three data byte
+	vscp_omsg.flags = VSCP_VALID_MSG + 4; // data bytes
 	vscp_omsg.priority = VSCP_PRIORITY_LOW;
 	vscp_omsg.vscp_class = VSCP_CLASS1_MEASUREMENT;
 	vscp_omsg.vscp_type = VSCP_TYPE_MEASUREMENT64_ANGLE;
-	vscp_omsg.data[ 0 ] = 0;
-	vscp_omsg.data[ 1 ] = DUMMY_DATA;
-	vscp_omsg.data[ 2 ] = DUMMY_DATA;
+
+	// Data format
+	vscp_omsg.data[ 0 ] = (DATA_FORMAT_NORMAL_INT << CONTROL_BYTE_DATA_FORMAT_SHIFT) | // Normalized integer
+						((CONTROL_BYTE_UNITS_MASK & UNIT_DEGREES) << CONTROL_BYTE_UNITS_SHIFT) | // Unit degrees
+						i; // Sensor
+
+	vscp_omsg.data[ 1 ] = (DIRECTION_LEFT << NORMALIZER_BYTE_SIGN_SHIFT) | ZERO_MAGNITUDE; // Shift by 0 decimal places to left
+	vscp_omsg.data[ 2 ] = 0; 	// MSB is zero
+
+	if( X_AXIS == i)
+		vscp_omsg.data[ 3 ] = accelData.xAngle;
+	else if( Y_AXIS == i)
+		vscp_omsg.data[ 3 ] = accelData.yAngle;
+	else if( Z_AXIS == i)
+		vscp_omsg.data[ 3 ] = accelData.zAngle;
+	else
+		vscp_omsg.data[ 3 ] = NOT_IMPLEMENTED;
 
 	// send the event
 	vscp_sendEvent();
@@ -739,7 +773,7 @@ int8_t sendTempEvent(uint8_t i)
 
 	// Data format
 	vscp_omsg.data[ 0 ] = 0x80 | // Normalized integer
-			(0x03 & DEFAULT_CONTROL_REG ) | //spi_eeprom_read(i + REG_TEMP0_CONTROL)) << 3) | // Unit
+			( 0x03 & DEFAULT_CONTROL_REG ) << 3 | //spi_eeprom_read(i + REG_TEMP0_CONTROL)) << 3) | // Unit
 			i; // Sensor
 	// Exponent
 	vscp_omsg.data[ 1 ] = 0x82;
@@ -802,37 +836,37 @@ uint8_t vscp_readAppReg(uint8_t reg)
 
 		// Zone
 		case 0x00:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_ZONE);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE);
 			break;
 
 			// Subzone
 		case 0x01:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_SUBZONE);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE);
 			break;
 
 			// Control register for temp sensor 0
 		case 0x02:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
+			rv = NOT_IMPLEMENTED; //readEEPROM(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
 			break;
 
 			// Control register for accel sensor 0
 		case 0x03:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
-			break;
-
-			// Current temp sensor value
-		case 0x04:
-			rv = current_temp; // Yes it is this simple for now (only using uint8_t). Will need 16 bits later for Kelvin.
+			rv = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
 			break;
 
 			// Current accel x angle
-		case 0x05:
-			rv = DUMMY_DATA; // accelData.xAngle; // current_xAngle;
+		case 0x04:
+			rv = accelData.xAngle; // Yes it is this simple for now (only using uint8_t). Will need 16 bits later for Kelvin.
 			break;
 
 			// Current accel y angle
+		case 0x05:
+			rv = accelData.yAngle;
+			break;
+
+			// Current accel z angle
 		case 0x06:
-			rv = DUMMY_DATA; // accelData.yAngle; //current_yAngle;
+			rv = accelData.zAngle;
 			break;
 
 			// Interval register for temp sensor 0
@@ -842,12 +876,12 @@ uint8_t vscp_readAppReg(uint8_t reg)
 
 			// Interval register for accel sensor 0
 		case 0x08:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
 			break;
 
 			// High alarm register for temp sensor 0
 		case 0x09:
-			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM);
 			break;
 
 			// Low alarm register for temp sensor 0
@@ -879,76 +913,76 @@ uint8_t vscp_writeAppReg( uint8_t reg, uint8_t val )
 
 		// Zone
 		case 0x00:
-			//spi_eeprom_write(VSCP_EEPROM_END + REG_FRDM_ZONE, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_ZONE);
+			writeEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE, val);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE);
 			break;
 
-			// Subzone
+		// Subzone
 		case 0x01:
-			//spi_eeprom_write(VSCP_EEPROM_END + REG_FRDM_SUBZONE, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_SUBZONE);
+			writeEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE, val);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE);
 			break;
 
-			// Control register for temp sensor 0
+		// Control register for temp sensor 0
 		case 0x02:
 			//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_CONTROL, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
+			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
 			break;
 
-			// Control register for accel sensor 0
+		// Control register for accel sensor 0
 		case 0x03:
-			//spi_eeprom_write(VSCP_EEPROM_END + REG_ACCEL0_CONTROL, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
+			writeEEPROM(VSCP_EEPROM_END + REG_ACCEL0_CONTROL, val);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
 			break;
 
-			// Current temp sensor value - Cannot write this
+		// Current accel x angle - Cannot write this
 		case 0x04:
-			rv = current_temp;
+			rv = accelData.xAngle;
 			break;
 
-			// Current accel x angle - Cannot write this
+		// Current accel y angle - Cannot write this
 		case 0x05:
-			rv = accelData.xAngle; //current_xAngle;
+			rv = accelData.yAngle;
 			break;
 
-			// Current accel y angle - Cannot write this
+		// Current accel z angle - Cannot write this
 		case 0x06:
-			rv = accelData.xAngle; //current_yAngle;
+			rv = accelData.zAngle;
 			break;
 
-			// Interval register for temp sensor 0
+		// Interval register for temp sensor 0
 		case 0x07:
 			//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL);
+			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL);
 			break;
 
-			// Interval register for accel sensor 0
+		// Interval register for accel sensor 0
 		case 0x08:
-			//spi_eeprom_write(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
+			writeEEPROM(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL, val);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
 			break;
 
-			// High alarm register for temp sensor 0
+		// High alarm register for temp sensor 0
 		case 0x09:
 			//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM);
+			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM);
 			break;
 
-			// Low alarm register for temp sensor 0
+		// Low alarm register for temp sensor 0
 		case 0x10:
 			//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_LOW_ALARM, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_LOW_ALARM);
+			rv = NOT_IMPLEMENTED; //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_LOW_ALARM);
 			break;
 
-			// High alarm register for accel sensor 0
+		// High alarm register for accel sensor 0
 		case 0x11:
-			//spi_eeprom_write(VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM, val);
-			//rv = //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM);
+			writeEEPROM(VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM, val);
+			rv = readEEPROM(VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM);
 			break;
 		}
 	}
 	else if (1 == vscp_page_select){
-		// Only used 1 page
+		rv = OUT_OF_BOUNDS; // Only used 1 page
 	}
 
 	return rv;
@@ -1035,7 +1069,8 @@ void vscp_goBootloaderMode( uint8_t algorithm )
  */
 uint8_t vscp_getZone(void)
 {
-	return 0;
+	//return 0;
+	return readEEPROM(VSCP_EEPROM_END + REG_FRDM_ZONE);
 }
 
 
@@ -1045,7 +1080,8 @@ uint8_t vscp_getZone(void)
  */
 uint8_t vscp_getSubzone(void)
 {
-	return 0;
+	//return 0;
+	return readEEPROM(VSCP_EEPROM_END + REG_FRDM_SUBZONE);
 }
 
 /*!
@@ -1170,33 +1206,33 @@ void init_app_eeprom(void)
 {
 	uint8_t rcvdByte = 0;
 
-	//spi_eeprom_write(VSCP_EEPROM_END + REG_FRDM_ZONE, ZONE);
-	//spi_eeprom_write(VSCP_EEPROM_END + REG_FRDM_SUBZONE, SUBZONE);
+	writeEEPROM(  VSCP_EEPROM_END + REG_FRDM_ZONE, ZONE);
+	writeEEPROM(  VSCP_EEPROM_END + REG_FRDM_SUBZONE, ZONE);
+
+	writeEEPROM(  VSCP_EEPROM_END + REG_ACCEL0_CONTROL, DEFAULT_CONTROL_REG);
 
 	//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_CONTROL, DEFAULT_CONTROL_REG);
-	//spi_eeprom_write(VSCP_EEPROM_END + REG_ACCEL0_CONTROL, DEFAULT_CONTROL_REG);
-
 	//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL, DEFAULT_REPORT_INTERVAL_TEMP0);
-	//spi_eeprom_write(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL, DEFAULT_REPORT_INTERVAL_ACCEL0);
 
-#ifdef MQX
+	writeEEPROM(  VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL, DEFAULT_REPORT_INTERVAL_ACCEL0);
+	writeEEPROM(  VSCP_EEPROM_END + REG_ACCEL0_HIGH_ALARM, DEFAULT_ACCEL0_HIGH_ALARM);
+
 #ifdef DEBUG
-	rcvdByte = //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_ZONE);
-			PRINTF("ZONE = %d, it should be (%d) \r\n", rcvdByte, ZONE);
+	rcvdByte = readEEPROM( VSCP_EEPROM_END + REG_FRDM_ZONE);
+	printf("ZONE = %d, it should be (%d) \r\n", rcvdByte, ZONE);
 
-	rcvdByte = //spi_eeprom_read(VSCP_EEPROM_END + REG_FRDM_ZONE);
-			PRINTF("SUBZONE = %d, it should be (%d) \r\n", rcvdByte, SUBZONE);
+	rcvdByte = readEEPROM( VSCP_EEPROM_END + REG_FRDM_SUBZONE);
+	printf("SUBZONE = %d, it should be (%d) \r\n", rcvdByte, SUBZONE);
 
-	rcvdByte = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_CONTROL);
-			PRINTF("TEMP0_CONTROL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_CONTROL_REG);
+	rcvdByte = readEEPROM( VSCP_EEPROM_END + REG_ACCEL0_CONTROL);
+	printf("TEMP0_CONTROL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_CONTROL_REG);
 
-	rcvdByte = //spi_eeprom_read(VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL);
-			PRINTF("TEMP0_REPORT_INTERVAL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_REPORT_INTERVAL_TEMP0);
+	rcvdByte = readEEPROM( VSCP_EEPROM_END + REG_TEMP0_REPORT_INTERVAL);
+	printf("TEMP0_REPORT_INTERVAL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_REPORT_INTERVAL_TEMP0);
 
-	rcvdByte = //spi_eeprom_read(VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
-			PRINTF("ACCEL0_REPORT_INTERVAL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_REPORT_INTERVAL_ACCEL0);
+	rcvdByte = readEEPROM( VSCP_EEPROM_END + REG_ACCEL0_REPORT_INTERVAL);
+	printf("ACCEL0_REPORT_INTERVAL = %d, it should be (%d) \r\n", rcvdByte, DEFAULT_REPORT_INTERVAL_ACCEL0);
 
-#endif
 #endif
 
 	//spi_eeprom_write(VSCP_EEPROM_END + REG_TEMP0_HIGH_ALARM, DEFAULT_TEMP0_HIGH_ALARM);

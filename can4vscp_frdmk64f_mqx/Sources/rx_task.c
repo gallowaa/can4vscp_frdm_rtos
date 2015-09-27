@@ -34,7 +34,6 @@ void Rx_Task(uint32_t parameter)
 
    while(1)
    {
-	   vscp_imsg.flags = 0;
 
 	  /* Block forever until MY_FLEXCAN_ISR signals event, that a message has been received*/
 
@@ -42,6 +41,7 @@ void Rx_Task(uint32_t parameter)
          printf("Event Wait failed \r\n");
       }
 
+      vscp_imsg.flags = 0;
       vscp_getEvent();
 
    }

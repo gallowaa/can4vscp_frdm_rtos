@@ -76,11 +76,43 @@
 #include "fsl_pmc_hal.h"				/*! Used for getting reference voltage for adc */
 #endif
 
-#define DUMMY_DATA 0x55
-#define NOT_IMPLEMENTED 0
+/* General Application defines */
+#define DUMMY_DATA 						0x55
+#define NOT_IMPLEMENTED 				0
+#define EUI48_START 					0xFA
+#define ACCEL_SENSORS					3
+#define X_AXIS							0
+#define Y_AXIS							1
+#define Z_AXIS							2
 
-/* VSCP application level */
-#define PAGES 1
+#define CONTROL_BYTE_UNITS_MASK			0x3
+
+#define CONTROL_BYTE_UNITS_SHIFT		3 // bits 3,4
+#define CONTROL_BYTE_DATA_FORMAT_SHIFT	5 // bits 5,6,7
+#define NORMALIZER_BYTE_SIGN_SHIFT		7 // bit 7
+#define DIRECTION_RIGHT					0
+#define DIRECTION_LEFT					1
+#define ZERO_MAGNITUDE					0x00
+
+/* These are specific to a particular event,
+ * See: http://www.vscp.org/docs/vscpspec/doku.php?id=class1.measurement#type_30_0x1e_angle
+ * */
+#define UNIT_RADIANS					0x0
+#define UNIT_DEGREES					0x1
+#define UNIT_ARCMINUTES					0x2
+#define UNIT_ARCSECONDS					0x3
+
+/* These apply to all CLASS1.DATA, CLASS1.MEASUREMENTS
+ * See: http://www.vscp.org/docs/vscpspec/doku.php?id=data_coding
+ * */
+#define DATA_FORMAT_BITS	    		0x0 // 0b000
+#define DATA_FORMAT_BYTE	    		0x1 // 0b001
+#define DATA_FORMAT_STRING	    		0x2 // 0b010
+#define DATA_FORMAT_INT		    		0x3 // 0b011
+#define DATA_FORMAT_NORMAL_INT  		0x4 // 0b100
+
+#define PAGES 							1
+#define OUT_OF_BOUNDS					99
 
 /* VSCP core features */
 /* There is enough space on the 2kbit eeprom to also use it for the vscp core registers
@@ -242,12 +274,13 @@ void init_app_ram( void );
 
 void doDM( void );
 
-int8_t sendAccelEvent( void );
+int8_t sendAccelEvent( uint8_t i);
 
 
 typedef struct accelData {
     uint8_t xAngle;
     uint8_t yAngle;
+    uint8_t zAngle;
 } accel_data_t;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -268,6 +301,7 @@ accel_data_t accelData;
 uint8_t temp0_low_alarm;
 uint8_t temp0_high_alarm;
 uint8_t accel0_high_alarm;
+const uint8_t vscp_deviceURL[] = "localhost/frdmk64.xml";
 
 /* other globals */
 
